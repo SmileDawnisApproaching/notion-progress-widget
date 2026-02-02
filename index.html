@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Time Progress Widget</title>
+  <style>
+    :root{
+      --bg: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --stroke: rgba(17, 24, 39, 0.10);
+      --track: rgba(17, 24, 39, 0.06);
+      --fill: #111827;
+      --shadow: 0 10px 30px rgba(17, 24, 39, 0.08), 0 1px 2px rgba(17, 24, 39, 0.06);
+      --radius: 14px;
+    }
+
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg: #0b0f19;
+        --text: #e5e7eb;
+        --muted: rgba(229,231,235,.70);
+        --stroke: rgba(229,231,235,0.14);
+        --track: rgba(229,231,235,0.08);
+        --fill: #e5e7eb;
+        --shadow: 0 10px 30px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25);
+      }
+    }
+
+    *{ box-sizing: border-box; }
+    body{
+      margin:0;
+      background: transparent;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      color: var(--text);
+    }
+
+    .wrap{
+      width: 280px;
+      padding: 14px 16px;
+      background: var(--bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--stroke);
+    }
+
+    .title{
+      display:flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .title .left{
+      font-size: 13px;
+      font-weight: 650;
+      letter-spacing: .2px;
+    }
+    .title .right{
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .row{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 6px 0;
+    }
+
+    .bar{
+      flex: 1 1 auto;
+      height: 12px;                 /* 更细更精致 */
+      border-radius: 999px;
+      background: var(--track);
+      border: 1px solid var(--stroke);
+      overflow: hidden;
+      position: relative;
+    }
+    .fill{
+      height: 100%;
+      background: var(--fill);
+      width: 0%;
+      border-radius: 999px;
+      transform: translateZ(0);
+      transition: width .25s ease;
+    }
+
+    .value{
+      width: 78px;
+      text-align:right;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums; /* 数字对齐更稳 */
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .meta{
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--stroke);
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .meta .label{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .meta .count{
+      font-size: 12px;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .hint{
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap" role="group" aria-label="Time progress">
+    <div class="title">
+      <div class="left">Time Progress</div>
+      <div class="right" id="nowText">—</div>
+    </div>
+
+    <div class="row">
+      <div class="bar"><div class="fill" id="yearFill"></div></div>
+      <div class="value" id="yearVal">Year 0%</div>
+    </div>
+
+    <div class="row">
+      <div class="bar"><div class="fill" id="monthFill"></div></div>
+      <div class="value" id="monthVal">Month 0%</div>
+    </div>
+
+    <div class="row">
+      <div class="bar"><div class="fill" id="weekFill"></div></div>
+      <div class="value" id="weekVal">Week 0%</div>
+    </div>
+
+    <div class="row">
+      <div class="bar"><div class="fill" id="dayFill"></div></div>
+      <div class="value" id="dayVal">Day 0%</div>
+    </div>
+
+    <div class="meta">
+      <div class="label">Weeks Passed</div>
+      <div class="count" id="weeksPassed">0 / 52</div>
+    </div>
+    <div class="hint" id="weeksHint"></div>
+  </div>
+
+<script>
+  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+  function pct(x){ return Math.round(clamp01(x)*100); }
+
+  function startOfDay(d){
+    const x = new Date(d);
+    x.setHours(0,0,0,0);
+    return x;
+  }
+  function startOfWeekMonday(d){
+    const x = startOfDay(d);
+    const day = x.getDay(); // 0=Sun..6=Sat
+    const diff = (day === 0 ? -6 : 1 - day); // move to Monday
+    x.setDate(x.getDate() + diff);
+    return x;
+  }
+  function startOfMonth(d){
+    return new Date(d.getFullYear(), d.getMonth(), 1, 0,0,0,0);
+  }
+  function startOfYear(d){
+    return new Date(d.getFullYear(), 0, 1, 0,0,0,0);
+  }
+  function endOfMonth(d){
+    return new Date(d.getFullYear(), d.getMonth()+1, 1, 0,0,0,0);
+  }
+  function endOfYear(d){
+    return new Date(d.getFullYear()+1, 0, 1, 0,0,0,0);
+  }
+
+  function pad2(n){ return String(n).padStart(2, "0"); }
+
+  function update(){
+    const now = new Date();
+
+    const nowText = `${pad2(now.getMonth()+1)}/${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+    document.getElementById("nowText").textContent = nowText;
+
+    // Day progress
+    const sod = startOfDay(now);
+    const eod = new Date(sod.getTime() + 24*60*60*1000);
+    const dayP = (now - sod) / (eod - sod);
+
+    // Week progress (Mon-Sun)
+    const sow = startOfWeekMonday(now);
+    const eow = new Date(sow.getTime() + 7*24*60*60*1000);
+    const weekP = (now - sow) / (eow - sow);
+
+    // Month progress
+    const som = startOfMonth(now);
+    const eom = endOfMonth(now);
+    const monthP = (now - som) / (eom - som);
+
+    // Year progress
+    const soy = startOfYear(now);
+    const eoy = endOfYear(now);
+    const yearP = (now - soy) / (eoy - soy);
+
+    // Weeks passed since Jan 1 (full weeks)
+    const daysPassed = (now - soy) / (24*60*60*1000);
+    const weeksPassed = Math.floor(daysPassed / 7);
+
+    // total weeks (approx)
+    const daysInYear = (eoy - soy) / (24*60*60*1000);
+    const totalWeeks = Math.ceil(daysInYear / 7);
+
+    // Paint bars
+    document.getElementById("dayFill").style.width = pct(dayP) + "%";
+    document.getElementById("weekFill").style.width = pct(weekP) + "%";
+    document.getElementById("monthFill").style.width = pct(monthP) + "%";
+    document.getElementById("yearFill").style.width = pct(yearP) + "%";
+
+    // Labels
+    document.getElementById("dayVal").textContent = "Day " + pct(dayP) + "%";
+    document.getElementById("weekVal").textContent = "Week " + pct(weekP) + "%";
+    document.getElementById("monthVal").textContent = "Month " + pct(monthP) + "%";
+    document.getElementById("yearVal").textContent = "Year " + pct(yearP) + "%";
+
+    document.getElementById("weeksPassed").textContent = weeksPassed + " / " + totalWeeks;
+  }
+
+  update();
+  setInterval(update, 30 * 1000);
+</script>
+</body>
+</html>
